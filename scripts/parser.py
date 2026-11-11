@@ -62,16 +62,37 @@ def setup_db():
 
 
 def search_2gis_places(category, api_key="56570d62-1a63-427a-b4df-4786d2df927d"):
-    url = f"https://catalog.api.2gis.com/3.0/items?q={category}&location=37.61556,55.75222&radius=20000&page_size=10&key={api_key}"
-    try:
-        response = requests.get(url, timeout=15)
-        if response.status_code == 200:
-            data = response.json()
-            if 'result' in data and 'items' in data['result']:
-                return data['result']['items']
-    except Exception as e:
-        print(f"Ошибка поиска {category} в 2GIS: {e}")
-    return []
+    all_items = []
+    max_pages = 5
+
+    for page in range(1, max_pages + 1):
+        url = f"https://catalog.api.2gis.com/3.0/items?q={category}&location=37.61556,55.75222&radius=20000&page_size=10&page={page}&key={api_key}"
+
+        try:
+            response = requests.get(url, timeout=15)
+            if response.status_code == 200:
+                data = response.json()
+                if 'result' in data and 'items' in data['result']:
+                    items = data['result']['items']
+                    all_items.extend(items)
+
+                    # Если API вернуло меньше 10 элементов, значит мы дошли до конца списка
+                    if len(items) < 10:
+                        break
+                else:
+                    # Если ключа items нет (например, результаты закончились), прерываем цикл
+                    break
+            else:
+                print(f"Ошибка API: {response.status_code}")
+                break
+
+        except Exception as e:
+            print(f"Ошибка поиска {category} в 2GIS (страница {page}): {e}")
+            break
+
+        time.sleep(0.5)  # Пауза между запросами страниц, чтобы API не заблокировал IP
+
+    return all_items
 
 
 def scrape_reviews_with_selenium(gis_id):
