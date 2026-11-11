@@ -1,12 +1,29 @@
+import os
 import requests
 import sqlite3
 import json
+import time
+
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.common.by import By
+
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
 
 
-# 1. Настройка локальной базы данных SQLite
 def setup_db():
-    conn = sqlite3.connect('database.db')
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    db_path = os.path.join(base_dir, 'data', 'database.db')
+
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
+
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS Locations (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -15,100 +32,164 @@ def setup_db():
             address TEXT,
             osm_id TEXT,
             gis_id TEXT,
+            maps_url TEXT,
             raw_description TEXT,
-            ai_summary TEXT
+            comments TEXT,
+            ai_summary TEXT,
+            rating REAL DEFAULT 5.0
         )
     ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS Tags (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS Location_Tags (
+            location_id INTEGER,
+            tag_id INTEGER,
+            FOREIGN KEY(location_id) REFERENCES Locations(id),
+            FOREIGN KEY(tag_id) REFERENCES Tags(id),
+            UNIQUE(location_id, tag_id)
+        )
+    ''')
+
     conn.commit()
     return conn
 
 
-# 2. Сбор открытых геоданных из OSM (Overpass API)
-# 2. Сбор открытых геоданных из OSM (Overpass API)
-def get_osm_locations():
-    overpass_url = "http://overpass-api.de/api/interpreter"
-    query = """
-    [out:json];
-    area["name"="Москва"]->.searchArea;
-    (
-      node["tourism"="museum"](area.searchArea);
-      node["leisure"="park"](area.searchArea);
-    );
-    out 100;
-    """
-
-    # Добавляем заголовки, чтобы сервер OSM не блокировал запрос
-    headers = {
-        'User-Agent': 'MoscowVibeMVP/1.0 (local test)',
-        'Accept': 'application/json, */*'
-    }
-
+def search_2gis_places(category, api_key="56570d62-1a63-427a-b4df-4786d2df927d"):
+    url = f"https://catalog.api.2gis.com/3.0/items?q={category}&location=37.61556,55.75222&radius=20000&page_size=10&key={api_key}"
     try:
-        response = requests.get(overpass_url, params={'data': query}, headers=headers)
-
-        # Проверяем, что сервер ответил кодом 200 (Успех)
-        if response.status_code == 200:
-            return response.json().get('elements', [])
-        else:
-            print(f"Ошибка OSM: Сервер вернул код {response.status_code}. Текст: {response.text[:100]}")
-            return []
-
-    except requests.exceptions.JSONDecodeError:
-        print(f"Ошибка OSM: Получен невалидный JSON. Ответ сервера: {response.text[:100]}")
-        return []
-    except Exception as e:
-        print(f"Сетевая ошибка при обращении к OSM: {e}")
-        return []
-
-
-# 3. Интеграция с официальным API 2GIS
-def get_2gis_data(query_text, api_key="56570d62-1a63-427a-b4df-4786d2df927d"):
-    # Эндпоинт поиска филиалов. В дальнейшем сюда добавятся методы для отзывов.
-    url = f"https://catalog.api.2gis.com/3.0/items?q={query_text}&location=37.61556,55.75222&radius=20000&key={api_key}"
-    try:
-        response = requests.get(url)
+        response = requests.get(url, timeout=15)
         if response.status_code == 200:
             data = response.json()
             if 'result' in data and 'items' in data['result']:
-                return data['result']['items'][0]  # Берем наиболее релевантное совпадение
+                return data['result']['items']
     except Exception as e:
-        print(f"Ошибка запроса к 2GIS: {e}")
-    return None
+        print(f"Ошибка поиска {category} в 2GIS: {e}")
+    return []
 
 
-# 4. Основной пайплайн офлайн-сбора
+def scrape_reviews_with_selenium(gis_id):
+    if not SELENIUM_AVAILABLE:
+        return []
+
+    url = f"https://2gis.ru/moscow/firm/{gis_id}/tab/reviews"
+    options = Options()
+    options.add_argument('--headless')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--no-sandbox')
+    options.add_argument('--disable-dev-shm-usage')
+
+    # ХАК: Добавляем флаги для обхода блокировок и скрытия автоматизации
+    options.add_experimental_option('excludeSwitches', ['enable-automation', 'enable-logging'])
+    options.add_experimental_option('useAutomationExtension', False)
+
+    options.add_argument(
+        'user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36')
+
+    service = Service(executable_path=r"D:\yandexdriver.exe")
+    reviews = []
+    driver = None
+    try:
+        driver = webdriver.Chrome(service=service, options=options)
+        driver.get(url)
+        time.sleep(4)  # Увеличили паузу для надежности
+
+        # ВОЗВРАЩЕНО: Блок авто-закрытия всплывающих окон
+        try:
+            driver.find_element(By.XPATH, "//*[contains(text(), 'Пропустить обновление')]").click()
+            time.sleep(2)
+        except:
+            pass
+
+        try:
+            for btn in driver.find_elements(By.XPATH,
+                                            "//*[contains(text(), 'Хорошо') or contains(text(), 'Понятно') or contains(text(), 'Принять')]"):
+                if btn.is_displayed():
+                    btn.click()
+                    time.sleep(1)
+        except:
+            pass
+
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight / 2);")
+        time.sleep(1)
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(2)
+
+        page_text = driver.execute_script("return document.body.innerText;")
+        lines = page_text.split('\n')
+
+        for line in lines:
+            text = line.strip()
+            real_words = [w for w in text.split() if any(c.isalpha() for c in w)]
+            is_valid_length = len(real_words) >= 9
+            is_not_interface = "2ГИС" not in text and "Условия" not in text and "сортировк" not in text.lower() and "Отзывы" not in text
+
+            if is_valid_length and is_not_interface:
+                if text not in reviews:
+                    reviews.append(text)
+                if len(reviews) == 3:
+                    break
+    except Exception:
+        pass
+    finally:
+        if driver:
+            driver.quit()
+
+    return reviews
+
+
 def main():
     conn = setup_db()
     cursor = conn.cursor()
+    categories = ['Музей', 'Парк', 'Ресторан', 'Кафе', 'Сквер', 'Усадьба', 'Галерея']
 
-    print("Начинаем выгрузку базы по Москве из OSM...")
-    osm_places = get_osm_locations()
+    print("Начинаем сбор данных (API 2GIS + Selenium)...\n")
 
-    for place in osm_places:
-        osm_id = str(place.get('id', ''))
-        tags = place.get('tags', {})
+    for category in categories:
+        print(f" -> Запрос топ-мест для категории: {category}...")
+        places = search_2gis_places(category)
 
-        title = tags.get('name', 'Без названия')
-        category = 'Музей/Парк'
-        address = f"{tags.get('addr:street', '')} {tags.get('addr:housenumber', '')}".strip()
+        for place in places:
+            try:
+                gis_id = str(place.get('id', ''))
+                title = place.get('name', 'Без названия')
+                address = place.get('address_name', '')
+                maps_url = f"https://2gis.ru/moscow/firm/{gis_id}"
 
-        print(f"Обогащение через 2GIS: {title}...")
-        gis_data = get_2gis_data(title)
-        gis_id = str(gis_data.get('id', '')) if gis_data else ''
+                cursor.execute("SELECT id FROM Locations WHERE gis_id = ?", (gis_id,))
+                if cursor.fetchone():
+                    continue
 
-        # Сборка сырого текста для будущей обработки нейросетью
-        raw_text = f"Теги OSM: {json.dumps(tags, ensure_ascii=False)}."
-        if gis_data:
-            raw_text += f" Данные 2GIS: {json.dumps(gis_data, ensure_ascii=False)}"
+                raw_text = f"Данные 2GIS: {json.dumps(place, ensure_ascii=False)}."
 
-        cursor.execute('''
-            INSERT INTO Locations (title, category, address, osm_id, gis_id, raw_description)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (title, category, address, osm_id, gis_id, raw_text))
+                try:
+                    raw_rating = place.get('rating', 5.0)
+                    rating = round(float(raw_rating), 2)
+                except (ValueError, TypeError):
+                    rating = 5.00
 
-    conn.commit()
+                reviews = scrape_reviews_with_selenium(gis_id)
+                comments_text = ' | '.join(reviews) if reviews else "Отзывы скрыты или отсутствуют."
+
+                cursor.execute('''
+                    INSERT INTO Locations (title, category, address, osm_id, gis_id, maps_url, raw_description, comments, rating)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (title, category, address, "", gis_id, maps_url, raw_text, comments_text, rating))
+
+                conn.commit()
+                print(f"    Сохранено: {title} (Рейтинг: {rating:.2f})")
+
+            except Exception as e:
+                continue
+
     conn.close()
-    print("\nУспех! Тестовый массив сохранен. База database.db готова.")
+    print("\nСбор данных завершен! Переходите к ИИ-обработке.")
 
 
 if __name__ == "__main__":

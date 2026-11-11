@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Гид По Местам | Поиск</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Шапка -->
+    <header>
+        <div class="logo">Гид<span>ПоМестам</span></div>
+
+        <nav class="nav-tabs">
+            <button class="tab-btn active" onclick="switchTab('search')">Поиск мест</button>
+            <button class="tab-btn" onclick="switchTab('history')">История поиска</button>
+        </nav>
+
+        <div class="auth-section">
+            <span id="userStatus" style="font-size: 0.9rem; color: var(--text-muted);">Гость</span>
+            <button class="btn btn-outline" id="authBtn" onclick="handleAuthClick()">Войти</button>
+        </div>
+    </header>
+
+    <!-- Основной контент -->
+    <main>
+        <section id="tab-search" class="tab-content active">
+            <form class="filter-panel" onsubmit="handleSearch(event)">
+
+                <!-- ПОЛЕ ВВОДА: Без подсказок снизу, поиск на лету. -->
+                <div class="form-group">
+                    <label for="cityInput">Город / Название</label>
+                    <input type="text" id="cityInput" class="input-control" placeholder="Например: Музей (поиск на лету)" autocomplete="new-password">
+                </div>
+
+                <div class="form-group">
+                    <label for="visitedInput">Где вы уже были? (исключить)</label>
+                    <input type="text" id="visitedInput" class="input-control" placeholder="Эрмитаж, Парк Горького...">
+                </div>
+
+                <div class="form-group multiselect" id="categoryMultiselect">
+                    <label>Категории мест</label>
+                    <div class="multiselect-btn" id="multiselectBtn" onclick="toggleDropdown()">
+                        Все категории
+                    </div>
+                    <div class="multiselect-dropdown" id="multiselectDropdown">
+                        <label class="checkbox-item"><input type="checkbox" value="Музей" onchange="updateMultiselectLabel()"> Музеи</label>
+                        <label class="checkbox-item"><input type="checkbox" value="Парк" onchange="updateMultiselectLabel()"> Парки</label>
+                        <label class="checkbox-item"><input type="checkbox" value="Ресторан" onchange="updateMultiselectLabel()"> Рестораны</label>
+                        <label class="checkbox-item"><input type="checkbox" value="Кафе" onchange="updateMultiselectLabel()"> Кафе</label>
+                        <label class="checkbox-item"><input type="checkbox" value="Сквер" onchange="updateMultiselectLabel()"> Скверы</label>
+                        <label class="checkbox-item"><input type="checkbox" value="Усадьба" onchange="updateMultiselectLabel()"> Усадьбы</label>
+                        <label class="checkbox-item"><input type="checkbox" value="Галерея" onchange="updateMultiselectLabel()"> Галереи</label>
+                    </div>
+                </div>
+
+                <div class="form-group multiselect" id="tagMultiselect">
+                    <label>Вайб (Хэштеги)</label>
+                    <div class="multiselect-btn" id="tagMultiselectBtn" onclick="toggleTagDropdown()">
+                        Любой вайб
+                    </div>
+                    <div class="multiselect-dropdown" id="tagMultiselectDropdown">
+                        <!-- Теги загрузятся автоматически -->
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="sortSelect">Сортировка</label>
+                    <select id="sortSelect" class="input-control" onchange="handleSearch()">
+                        <option value="rating">По рейтингу (убывание)</option>
+                        <option value="name">По алфавиту (А–Я)</option>
+                    </select>
+                </div>
+
+                <button type="submit" class="btn">Найти</button>
+            </form>
+
+            <!-- Сюда сразу рисуются карточки -->
+            <div class="cards-grid" id="cardsContainer">
+                <p style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 2rem;">Загрузка данных из базы...</p>
+            </div>
+        </section>
+
+        <section id="tab-history" class="tab-content">
+            <div class="history-list" id="historyContainer"></div>
+        </section>
+    </main>
+
+    <div class="modal-overlay" id="authModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Авторизация</h3>
+                <button class="close-btn" onclick="closeModal()">×</button>
+            </div>
+            <form onsubmit="login(event)" style="display: flex; flex-direction: column; gap: 1rem;">
+                <div class="form-group">
+                    <label for="username">Логин</label>
+                    <input type="text" id="username" class="input-control" required placeholder="Введите ваше имя">
+                </div>
+                <div class="form-group">
+                    <label for="password">Пароль</label>
+                    <input type="password" id="password" class="input-control" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn">Войти в аккаунт</button>
+            </form>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
