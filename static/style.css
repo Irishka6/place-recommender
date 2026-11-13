@@ -435,3 +435,27 @@ main {
 .close-btn:hover {
     color: var(--text);
 }
+
+/* Поиск внутри выпадающего списка тегов */
+.tag-search-wrapper {
+    position: sticky;
+    top: -0.5rem;
+    background: var(--surface);
+    padding: 0.25rem 0 0.5rem 0;
+    margin-bottom: 0.25rem;
+    border-bottom: 1px solid var(--border);
+    z-index: 2;
+}
+
+.tag-search-input {
+    padding: 0.4rem 0.65rem;
+    font-size: 0.85rem;
+    border-radius: 6px;
+}
+
+.no-tags-message {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    padding: 0.75rem 0.5rem;
+}
