@@ -43,8 +43,15 @@ function toggleDropdown() {
 }
 
 function toggleTagDropdown() {
-    document.getElementById('tagMultiselectDropdown').classList.toggle('open');
+    const dropdown = document.getElementById('tagMultiselectDropdown');
+    dropdown.classList.toggle('open');
     document.getElementById('multiselectDropdown').classList.remove('open');
+
+    // Если открыли список — сразу ставим фокус в строку поиска тегов
+    if (dropdown.classList.contains('open')) {
+        const searchInput = document.getElementById('tagSearchInput');
+        if (searchInput) searchInput.focus();
+    }
 }
 
 document.addEventListener('click', (e) => {
@@ -81,14 +88,53 @@ function updateTagLabel() {
     handleSearch();
 }
 
+
 function renderTagDropdown(tags) {
     const container = document.getElementById('tagMultiselectDropdown');
     if (container) {
-        container.innerHTML = tags.map(tag => `
-            <label class="checkbox-item">
-                <input type="checkbox" value="${tag}" onchange="updateTagLabel()"> ${tag}
-            </label>
-        `).join('');
+        // Создаем липкое поле поиска сверху и список чекбоксов под ним
+        container.innerHTML = `
+            <div class="tag-search-wrapper" onclick="event.stopPropagation()">
+                <input type="text"
+                       id="tagSearchInput"
+                       class="input-control tag-search-input"
+                       placeholder="Найти хэштег..."
+                       oninput="filterTagOptions(this.value)">
+            </div>
+            <div id="tagCheckboxesList">
+                ${tags.map(tag => `
+                    <label class="checkbox-item">
+                        <input type="checkbox" value="${tag}" onchange="updateTagLabel()"> ${tag}
+                    </label>
+                `).join('')}
+            </div>
+            <div id="noTagsFound" class="no-tags-message" style="display: none;">
+                Ничего не найдено
+            </div>
+        `;
+    }
+}
+
+// Фильтрация списка тегов при вводе текста
+function filterTagOptions(query) {
+    const cleanQuery = query.trim().toLowerCase();
+    const items = document.querySelectorAll('#tagCheckboxesList .checkbox-item');
+    let visibleCount = 0;
+
+    items.forEach(item => {
+        const tagName = item.textContent.trim().toLowerCase();
+        if (tagName.includes(cleanQuery)) {
+            item.style.display = 'flex';
+            visibleCount++;
+        } else {
+            item.style.display = 'none';
+        }
+    });
+
+    // Показываем надпись, если ни один тег не подошел
+    const noTagsMsg = document.getElementById('noTagsFound');
+    if (noTagsMsg) {
+        noTagsMsg.style.display = visibleCount === 0 ? 'block' : 'none';
     }
 }
 
